@@ -261,6 +261,8 @@ main {
 }
 .radar-pan, .radar-layer, .radar-frame { position: absolute; inset: 0; }
 .radar-layer img, .radar-frame img { position: absolute; width: 256px; height: 256px; pointer-events: none; }
+/* OSM tiles are light - turn them into a dark map that matches the app */
+.radar-base img { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.45); }
 .radar-frame { opacity: 0; transition: opacity .25s; }
 .radar-frame.active { opacity: .85; }
 .radar-marker {
