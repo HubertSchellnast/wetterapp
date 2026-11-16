@@ -3,7 +3,7 @@ import { fetchForecast, searchLocations } from './api.js';
 import * as store from './storage.js';
 import { describe, sceneFor } from './weathercodes.js';
 import { setScene } from './background.js';
-import { fetchWarnings, WARN_TYPES, WARN_LEVELS, bulletLines } from './warnings.js';
+import { fetchWarnings, LEVELS, SOURCES } from './warnings.js';
 import { openModal, setModalContent, closeModal, isModalOpen } from './modal.js';
 
 const DEFAULT_LOCATION = { name: 'Wien', lat: 48.21, lon: 16.37, admin1: 'Wien', country: 'Österreich' };
@@ -243,66 +243,69 @@ function renderWarnings(result) {
   const banner = $('warnings');
   const info = $('warn-info');
   banner.hidden = true;
-  info.textContent = '';
+  info.replaceChildren();
   if (!result) return;
   if (!result.covered) {
-    info.textContent = 'Unwetterwarnungen: nur für Orte in Österreich verfügbar';
+    const link = el('a', '', 'Warnkarte Europa (MeteoAlarm) ›');
+    link.href = 'https://meteoalarm.org/';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    info.append('Unwetterwarnungen in der App nur für Österreich und Deutschland · ', link);
     return;
   }
+  const src = SOURCES[result.source];
   if (!result.warnings.length) {
-    info.textContent = `Unwetterwarnungen: keine aktiv${result.municipality ? ` (${result.municipality})` : ''}`;
+    info.textContent = `Unwetterwarnungen: keine aktiv${result.area ? ` (${result.area})` : ''} · ${src.label}`;
     return;
   }
   const top = result.warnings[0];
-  const [levelName, levelKey] = WARN_LEVELS[top.level] || ['', 'yellow'];
-  const [typeName, icon] = WARN_TYPES[top.type] || ['Warnung', '⚠️'];
+  const level = LEVELS[top.level] || LEVELS[1];
   const textBox = el('span', 'warn-text');
   textBox.append(
-    el('strong', '', `Warnstufe ${levelName}: ${typeName}`),
+    el('strong', '', `Warnstufe ${level.name}: ${top.typeName}`),
     el('span', '', top.text),
   );
   const more = result.warnings.length > 1 ? `+${result.warnings.length - 1} weitere · ` : '';
   textBox.append(el('span', 'warn-more', `${more}Details ›`));
-  banner.className = `warn-banner warn-${levelKey}`;
-  banner.replaceChildren(el('span', 'warn-icon', icon), textBox);
+  banner.className = `warn-banner warn-${level.key}`;
+  banner.replaceChildren(el('span', 'warn-icon', top.icon), textBox);
   banner.hidden = false;
-  info.textContent = 'Unwetterwarnungen: GeoSphere Austria';
+  info.textContent = `Unwetterwarnungen: ${src.label}`;
 }
 
 function openWarningDetails() {
   const result = lastWarnings;
   if (!result || !result.warnings.length) return;
+  const src = SOURCES[result.source];
   const box = el('div', 'warn-details');
-  if (result.municipality) box.append(el('p', 'muted', `Gemeinde: ${result.municipality}`));
+  if (result.area) box.append(el('p', 'muted', `Gebiet: ${result.area}`));
   for (const w of result.warnings) {
-    const [levelName, levelKey] = WARN_LEVELS[w.level] || ['', 'yellow'];
-    const [typeName, icon] = WARN_TYPES[w.type] || ['Warnung', '⚠️'];
-    const card = el('article', `warn-card warn-${levelKey}`);
+    const level = LEVELS[w.level] || LEVELS[1];
+    const card = el('article', `warn-card warn-${level.key}`);
     card.append(
-      el('h3', '', `${icon} ${typeName} – Warnstufe ${levelName}`),
+      el('h3', '', `${w.icon} ${w.typeName} – Warnstufe ${level.name}`),
       el('p', 'warn-time', `${w.begin} bis ${w.end}`),
       el('p', '', w.text),
     );
-    const section = (title, text) => {
-      const lines = bulletLines(text);
-      if (!lines.length) return;
+    if (w.details && w.details !== w.text) card.append(el('p', '', w.details));
+    const section = (title, items) => {
+      if (!items.length) return;
       card.append(el('h4', '', title));
       const ul = el('ul');
-      lines.forEach((l) => ul.append(el('li', '', l)));
+      items.forEach((l) => ul.append(el('li', '', l)));
       card.append(ul);
     };
     section('Mögliche Auswirkungen', w.impacts);
     section('Empfehlungen', w.advice);
-    if (w.meteo) card.append(el('p', 'muted', w.meteo));
     box.append(card);
   }
-  const src = el('p', 'source');
-  const link = el('a', '', 'warnungen.zamg.at');
-  link.href = 'https://warnungen.zamg.at/';
+  const foot = el('p', 'source');
+  const link = el('a', '', src.urlLabel);
+  link.href = src.url;
   link.target = '_blank';
   link.rel = 'noopener';
-  src.append('Quelle: GeoSphere Austria (CC BY 4.0) · ', link);
-  box.append(src);
+  foot.append(`Quelle: ${src.label} (${src.license}) · `, link);
+  box.append(foot);
   openModal('Unwetterwarnungen', box);
 }
 
