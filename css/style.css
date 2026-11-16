@@ -151,6 +151,14 @@ main {
 .hour-temp { font-weight: 600; }
 .hour-pop { font-size: .72rem; color: var(--accent); min-height: 1em; }
 
+/* card header with temperature colour legend */
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.card-head h2 { margin-bottom: 10px; }
+.temp-legend { width: 150px; padding-top: 2px; }
+.temp-legend-bar { height: 6px; border-radius: 3px; }
+.temp-legend-ticks { position: relative; height: 14px; margin-top: 3px; }
+.temp-legend-ticks span { position: absolute; transform: translateX(-50%); font-size: .62rem; color: var(--muted); }
+
 /* daily list */
 .daily { list-style: none; margin: 0; padding: 0; }
 .day {
