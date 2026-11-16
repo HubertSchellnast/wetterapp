@@ -28,6 +28,55 @@ function el(tag, className, text) {
 
 const round = (v) => (v === null || v === undefined ? '–' : Math.round(v));
 const hhmm = (iso) => iso.slice(11, 16);
+// ---------- temperature colour scale (diverging: blue = cold, neutral ~12 °C, red = warm) ----------
+const TEMP_STOPS = [
+  [-15, [61, 90, 254]],   // deep blue
+  [0, [90, 176, 255]],    // blue  (frost line)
+  [12, [205, 210, 218]],  // neutral light grey
+  [20, [255, 177, 90]],   // orange
+  [30, [255, 85, 70]],    // red
+  [38, [214, 40, 90]],    // dark red / magenta
+];
+
+function tempColor(t) {
+  if (t <= TEMP_STOPS[0][0]) return `rgb(${TEMP_STOPS[0][1].join(',')})`;
+  for (let i = 1; i < TEMP_STOPS.length; i++) {
+    const [t1, c1] = TEMP_STOPS[i];
+    if (t <= t1) {
+      const [t0, c0] = TEMP_STOPS[i - 1];
+      const f = (t - t0) / (t1 - t0);
+      return `rgb(${c0.map((v, k) => Math.round(v + (c1[k] - v) * f)).join(',')})`;
+    }
+  }
+  return `rgb(${TEMP_STOPS[TEMP_STOPS.length - 1][1].join(',')})`;
+}
+
+/** CSS gradient that colours each point of the bar by its real temperature. */
+function tempGradient(lo, hi) {
+  if (hi - lo < 0.5) return tempColor((lo + hi) / 2);
+  const steps = 8;
+  const stops = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = lo + ((hi - lo) * i) / steps;
+    stops.push(`${tempColor(t)} ${(i / steps) * 100}%`);
+  }
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+
+function renderTempLegend() {
+  const box = $('temp-legend');
+  if (!box) return;
+  const bar = el('div', 'temp-legend-bar');
+  bar.style.background = tempGradient(-10, 35);
+  const ticks = el('div', 'temp-legend-ticks');
+  [-10, 0, 10, 20, 30].forEach((t) => {
+    const s = el('span', '', `${t}°`);
+    s.style.left = `${((t + 10) / 45) * 100}%`;
+    ticks.append(s);
+  });
+  box.replaceChildren(bar, ticks);
+}
+
 const compass = (deg) => ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
 
 function dayName(dateStr, index) {
@@ -103,6 +152,7 @@ function renderDaily(data) {
     const fill = el('div', 'bar-fill');
     fill.style.left = `${((d.temperature_2m_min[i] - weekMin) / range) * 100}%`;
     fill.style.width = `${Math.max(((d.temperature_2m_max[i] - d.temperature_2m_min[i]) / range) * 100, 4)}%`;
+    fill.style.background = tempGradient(d.temperature_2m_min[i], d.temperature_2m_max[i]);
     bar.append(fill);
 
     row.append(
@@ -436,6 +486,7 @@ function registerServiceWorker() {
 }
 
 function init() {
+  renderTempLegend();
   bindEvents();
   registerServiceWorker();
   const last = store.getLastLocation();
