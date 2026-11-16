@@ -1,0 +1,218 @@
+/* Huberts Wetterapp - dark theme, tuned for Galaxy S25 (~360x780 CSS px) */
+:root {
+  --bg: #0b0f17;
+  --surface: rgba(20, 26, 36, 0.62);
+  --surface-2: rgba(32, 41, 56, 0.7);
+  --surface-solid: #141a24;
+  --border: rgba(120, 140, 170, 0.18);
+  --text: #e6edf7;
+  --muted: #8b98ab;
+  --accent: #5ab0ff;
+  --warn: #f5b84b;
+  --error: #ff6b6b;
+  --cold: #5ab0ff;
+  --warm: #ffb15a;
+  --radius: 18px;
+  --gap: 14px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--bg); }
+body { background: transparent; }
+
+html, body {
+  margin: 0;
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Samsung Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* ---------- weather background (js/background.js) ---------- */
+.sky {
+  position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  background: linear-gradient(180deg, var(--sky-top, #0b0f17) 0%, var(--sky-bottom, #0b0f17) 75%);
+}
+.sky::before { /* sun / moon glow */
+  content: ''; position: absolute; top: -18vh; right: -25vw; width: 90vw; height: 90vw;
+  border-radius: 50%; opacity: 0; transition: opacity 1.2s;
+}
+.sky[data-glow="sun"]::before { opacity: 1; background: radial-gradient(closest-side, rgba(255, 177, 90, .28), rgba(255, 122, 89, .08) 55%, transparent); }
+.sky[data-glow="moon"]::before { opacity: 1; background: radial-gradient(closest-side, rgba(200, 220, 255, .14), transparent 70%); }
+.sky canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sky .cloud {
+  position: absolute; left: 0; width: 460px; height: 170px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(200, 212, 230, var(--cloud-alpha, 0)), transparent);
+  filter: blur(6px); animation: drift linear infinite;
+}
+.sky .cloud.c1 { top: 4%; animation-duration: 95s; animation-delay: -20s; }
+.sky .cloud.c2 { top: 20%; width: 560px; height: 200px; animation-duration: 130s; animation-delay: -80s; }
+.sky .cloud.c3 { top: 40%; width: 380px; animation-duration: 110s; animation-delay: -50s; }
+.sky[data-fog="1"] .cloud { height: 260px; width: 900px; filter: blur(14px); }
+.sky[data-fog="1"] .cloud.c3 { top: 65%; }
+@keyframes drift { from { transform: translateX(-110%); } to { transform: translateX(110vw); } }
+.sky .flash { position: absolute; inset: 0; background: rgb(215, 220, 255); opacity: 0; }
+.sky .flash.on { animation: lightning .9s ease-out; }
+@keyframes lightning { 0% { opacity: 0; } 8% { opacity: .32; } 16% { opacity: .04; } 26% { opacity: .22; } 100% { opacity: 0; } }
+
+/* ---------- brand header (WetterHubert) ---------- */
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  max-width: 560px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px 2px;
+}
+.brand-logo { flex-shrink: 0; filter: drop-shadow(0 0 10px rgba(90, 176, 255, .35)); }
+.brand-title { margin: 0; font-size: 1.9rem; font-weight: 300; letter-spacing: -.5px; line-height: 1; }
+.brand-title b {
+  font-weight: 900;
+  background: linear-gradient(90deg, #5ab0ff, #9fd2ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.brand-tagline { margin: 4px 0 0; font-size: .85rem; color: var(--muted); }
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 16px;
+  max-width: 560px; margin: 0 auto;
+  background: rgba(8, 11, 17, 0.35);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.location-btn {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  background: none; border: 0; padding: 8px 4px;
+  font-size: 1.15rem; font-weight: 600;
+}
+.location-btn span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chevron { color: var(--muted); font-size: .9rem; }
+.topbar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.icon-btn {
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 1.15rem; line-height: 1;
+}
+.icon-btn:active { background: var(--surface-2); }
+.icon-btn.is-active { color: var(--warn); border-color: var(--warn); }
+.icon-btn.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- layout ---------- */
+main {
+  max-width: 560px; margin: 0 auto;
+  padding: 0 16px calc(env(safe-area-inset-bottom) + 24px);
+  display: flex; flex-direction: column; gap: var(--gap);
+}
+
+.status {
+  padding: 10px 14px; border-radius: 12px; font-size: .9rem;
+  background: var(--surface-2); color: var(--muted);
+}
+.status-warn { color: var(--warn); }
+.status-error { color: var(--error); }
+
+/* ---------- hero ---------- */
+.hero { text-align: center; padding: 18px 0 8px; }
+.hero-icon { font-size: 4.2rem; line-height: 1.1; }
+.hero-temp { font-size: 5.2rem; font-weight: 200; letter-spacing: -2px; line-height: 1; margin-top: 4px; }
+.hero-desc { font-size: 1.2rem; margin-top: 8px; }
+.hero-sub { color: var(--muted); margin-top: 6px; font-size: .95rem; }
+
+/* ---------- cards ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--radius); padding: 14px 14px 10px;
+}
+.card h2, .sheet-panel h3 {
+  margin: 0 0 10px; font-size: .78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+}
+
+/* hourly strip */
+.hourly {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px;
+  scroll-snap-type: x proximity; scrollbar-width: none;
+}
+.hourly::-webkit-scrollbar { display: none; }
+.hour {
+  flex: 0 0 auto; width: 58px; padding: 8px 0; border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  scroll-snap-align: start;
+}
+.hour.now { background: var(--surface-2); }
+.hour-time { font-size: .8rem; color: var(--muted); }
+.hour-icon { font-size: 1.4rem; }
+.hour-temp { font-weight: 600; }
+.hour-pop { font-size: .72rem; color: var(--accent); min-height: 1em; }
+
+/* daily list */
+.daily { list-style: none; margin: 0; padding: 0; }
+.day {
+  display: grid; grid-template-columns: 64px 30px 38px 1fr 38px; align-items: center; gap: 8px;
+  padding: 10px 0; border-top: 1px solid var(--border);
+}
+.day:first-child { border-top: 0; }
+.day-name { font-weight: 500; }
+.day-icon { font-size: 1.3rem; text-align: center; }
+.day-min { color: var(--muted); text-align: right; }
+.day-max { text-align: left; font-weight: 600; }
+.day-pop { display: block; font-size: .7rem; color: var(--accent); }
+.bar { position: relative; height: 6px; border-radius: 3px; background: var(--surface-2); }
+.bar-fill {
+  position: absolute; top: 0; bottom: 0; border-radius: 3px;
+  background: linear-gradient(90deg, var(--cold), var(--warm));
+}
+
+/* details grid */
+.details { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.detail {
+  background: var(--surface); border: 1px solid var(--border);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.detail-label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.detail-value { font-size: 1.35rem; font-weight: 600; margin-top: 4px; }
+.detail-extra { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+.footer { text-align: center; color: var(--muted); font-size: .78rem; display: grid; gap: 4px; padding-top: 6px; }
+.footer a { color: var(--accent); }
+
+/* ---------- bottom sheet ---------- */
+.sheet[hidden] { display: none; }
+.sheet { position: fixed; inset: 0; z-index: 50; }
+.sheet-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .55); }
+.sheet-panel {
+  position: absolute; left: 0; right: 0; bottom: 0; max-height: 85vh; overflow-y: auto;
+  background: var(--surface-solid); border-top-left-radius: 22px; border-top-right-radius: 22px;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 16px);
+  animation: slide-up .2s ease-out;
+}
+@keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 12px; }
+.sheet-panel h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.sheet-panel h3 { margin-top: 18px; }
+#search-input {
+  width: 100%; padding: 13px 14px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 1rem;
+}
+#search-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.list { list-style: none; margin: 8px 0 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.list .pick { flex: 1; text-align: left; background: none; border: 0; padding: 12px 2px; min-width: 0; }
+.list .pick small { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.list .remove { background: none; border: 0; color: var(--muted); padding: 10px; font-size: 1rem; }
+.list .empty { color: var(--muted); padding: 10px 2px; border: 0; font-size: .9rem; }
+.sheet-close {
+  width: 100%; margin-top: 18px; padding: 13px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+}
