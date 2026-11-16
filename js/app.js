@@ -1,0 +1,327 @@
+// Huberts Wetterapp - UI controller
+import { fetchForecast, searchLocations } from './api.js';
+import * as store from './storage.js';
+import { describe, sceneFor } from './weathercodes.js';
+import { setScene } from './background.js';
+
+const DEFAULT_LOCATION = { name: 'Wien', lat: 48.21, lon: 16.37, admin1: 'Wien', country: 'Österreich' };
+const STALE_AFTER_MS = 15 * 60 * 1000;
+
+const $ = (id) => document.getElementById(id);
+let currentLocation = null;
+let lastFetchedAt = 0;
+let requestSeq = 0;
+let searchTimer = null;
+
+// ---------- helpers ----------
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const round = (v) => (v === null || v === undefined ? '–' : Math.round(v));
+const hhmm = (iso) => iso.slice(11, 16);
+const compass = (deg) => ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+
+function dayName(dateStr, index) {
+  if (index === 0) return 'Heute';
+  if (index === 1) return 'Morgen';
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('de-AT', { weekday: 'short' });
+}
+
+function showStatus(message, type = 'info') {
+  const box = $('status');
+  if (!message) { box.hidden = true; return; }
+  box.textContent = message;
+  box.className = `status status-${type}`;
+  box.hidden = false;
+}
+
+function setBusy(busy) {
+  $('btn-refresh').classList.toggle('spinning', busy);
+}
+
+// ---------- rendering ----------
+function renderHero(data) {
+  const c = data.current;
+  const d = data.daily;
+  const { label, icon } = describe(c.weather_code, c.is_day);
+  $('hero-icon').textContent = icon;
+  const { scene, intensity } = sceneFor(c.weather_code);
+  setScene(scene, c.is_day, intensity);
+  $('hero-temp').textContent = `${round(c.temperature_2m)}°`;
+  $('hero-desc').textContent = label;
+  $('hero-sub').textContent =
+    `Gefühlt ${round(c.apparent_temperature)}° · H ${round(d.temperature_2m_max[0])}° · T ${round(d.temperature_2m_min[0])}°`;
+}
+
+function renderHourly(data) {
+  const h = data.hourly;
+  const nowHour = `${data.current.time.slice(0, 13)}:00`;
+  let start = h.time.findIndex((t) => t >= nowHour);
+  if (start < 0) start = 0;
+  const container = $('hourly');
+  container.replaceChildren();
+  for (let i = start; i < Math.min(start + 24, h.time.length); i++) {
+    const item = el('div', i === start ? 'hour now' : 'hour');
+    const { icon, label } = describe(h.weather_code[i], h.is_day[i]);
+    item.append(
+      el('span', 'hour-time', i === start ? 'Jetzt' : hhmm(h.time[i])),
+      el('span', 'hour-icon', icon),
+      el('span', 'hour-temp', `${round(h.temperature_2m[i])}°`),
+      el('span', 'hour-pop', h.precipitation_probability[i] >= 10 ? `${h.precipitation_probability[i]} %` : ''),
+    );
+    item.title = label;
+    container.append(item);
+  }
+}
+
+function renderDaily(data) {
+  const d = data.daily;
+  const weekMin = Math.min(...d.temperature_2m_min);
+  const weekMax = Math.max(...d.temperature_2m_max);
+  const range = Math.max(weekMax - weekMin, 1);
+  const list = $('daily');
+  list.replaceChildren();
+  d.time.forEach((date, i) => {
+    const { icon, label } = describe(d.weather_code[i], 1);
+    const row = el('li', 'day');
+    row.title = label;
+
+    const name = el('span', 'day-name', dayName(date, i));
+    const pop = d.precipitation_probability_max[i];
+    if (pop >= 20) name.append(el('span', 'day-pop', `${pop} %`));
+
+    const bar = el('div', 'bar');
+    const fill = el('div', 'bar-fill');
+    fill.style.left = `${((d.temperature_2m_min[i] - weekMin) / range) * 100}%`;
+    fill.style.width = `${Math.max(((d.temperature_2m_max[i] - d.temperature_2m_min[i]) / range) * 100, 4)}%`;
+    bar.append(fill);
+
+    row.append(
+      name,
+      el('span', 'day-icon', icon),
+      el('span', 'day-min', `${round(d.temperature_2m_min[i])}°`),
+      bar,
+      el('span', 'day-max', `${round(d.temperature_2m_max[i])}°`),
+    );
+    list.append(row);
+  });
+}
+
+function renderDetails(data) {
+  const c = data.current;
+  const d = data.daily;
+  const items = [
+    ['Luftfeuchte', `${round(c.relative_humidity_2m)} %`, ''],
+    ['Wind', `${round(c.wind_speed_10m)} km/h`, `${compass(c.wind_direction_10m)} · Böen ${round(c.wind_gusts_10m)} km/h`],
+    ['Luftdruck', `${round(c.surface_pressure)} hPa`, ''],
+    ['UV-Index', `${round(d.uv_index_max[0])}`, 'Tagesmaximum'],
+    ['Sonnenaufgang', hhmm(d.sunrise[0]), ''],
+    ['Sonnenuntergang', hhmm(d.sunset[0]), ''],
+    ['Niederschlag', `${(d.precipitation_sum[0] ?? 0).toFixed(1).replace('.', ',')} mm`, 'heute gesamt'],
+    ['Regenrisiko', `${d.precipitation_probability_max[0] ?? 0} %`, 'heute maximal'],
+  ];
+  const grid = $('details');
+  grid.replaceChildren(...items.map(([label, value, extra]) => {
+    const box = el('div', 'detail');
+    box.append(el('div', 'detail-label', label), el('div', 'detail-value', value));
+    if (extra) box.append(el('div', 'detail-extra', extra));
+    return box;
+  }));
+}
+
+function render(data, fetchedAt, fromCache) {
+  renderHero(data);
+  renderHourly(data);
+  renderDaily(data);
+  renderDetails(data);
+  lastFetchedAt = fetchedAt;
+  const when = new Date(fetchedAt).toLocaleString('de-AT', {
+    weekday: 'short', hour: '2-digit', minute: '2-digit',
+  });
+  $('updated').textContent = `Aktualisiert: ${when}${fromCache ? ' (gespeicherter Stand)' : ''}`;
+}
+
+// ---------- location handling ----------
+function updateFavButton() {
+  const btn = $('btn-fav');
+  const fav = currentLocation && !currentLocation.isGps && store.isFavorite(currentLocation);
+  btn.textContent = fav ? '★' : '☆';
+  btn.classList.toggle('is-active', Boolean(fav));
+  btn.disabled = !currentLocation || Boolean(currentLocation.isGps);
+  btn.setAttribute('aria-label', fav ? 'Favorit entfernen' : 'Als Favorit speichern');
+}
+
+async function loadLocation(loc) {
+  currentLocation = loc;
+  store.setLastLocation(loc);
+  $('location-name').textContent = loc.name;
+  updateFavButton();
+
+  const cached = store.getCachedForecast(loc);
+  if (cached) render(cached.data, cached.fetchedAt, true);
+
+  if (!navigator.onLine) {
+    showStatus(cached ? 'Offline – gespeicherter Stand' : 'Offline – noch keine Daten für diesen Ort', cached ? 'warn' : 'error');
+    return;
+  }
+
+  const seq = ++requestSeq;
+  setBusy(true);
+  try {
+    const data = await fetchForecast(loc.lat, loc.lon);
+    if (seq !== requestSeq) return; // a newer request superseded this one
+    const fetchedAt = Date.now();
+    store.setCachedForecast(loc, data, fetchedAt);
+    render(data, fetchedAt, false);
+    showStatus(null);
+  } catch (err) {
+    if (seq !== requestSeq) return;
+    console.error('forecast failed', err);
+    showStatus(cached ? 'Keine Verbindung – gespeicherter Stand' : 'Wetterdaten konnten nicht geladen werden', cached ? 'warn' : 'error');
+  } finally {
+    if (seq === requestSeq) setBusy(false);
+  }
+}
+
+function useGps(fallback) {
+  if (!('geolocation' in navigator)) {
+    showStatus('GPS wird von diesem Browser nicht unterstützt', 'error');
+    if (fallback) loadLocation(fallback);
+    return;
+  }
+  showStatus('Standort wird ermittelt …');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      // Rounded to ~1 km for data minimisation (GDPR) before it is sent to Open-Meteo.
+      loadLocation({
+        name: 'Mein Standort',
+        lat: Number(pos.coords.latitude.toFixed(2)),
+        lon: Number(pos.coords.longitude.toFixed(2)),
+        isGps: true,
+      });
+    },
+    (err) => {
+      const msg = err.code === err.PERMISSION_DENIED
+        ? 'Standortzugriff verweigert – bitte Ort über den Namen oben suchen'
+        : 'Standort nicht verfügbar – bitte Ort suchen';
+      showStatus(msg, 'warn');
+      if (fallback) loadLocation(fallback);
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 10 * 60 * 1000 },
+  );
+}
+
+// ---------- search sheet ----------
+function locationSubtitle(loc) {
+  return [loc.admin1, loc.country].filter(Boolean).join(', ');
+}
+
+function locationItem(loc, { removable = false } = {}) {
+  const li = el('li');
+  const pick = el('button', 'pick', loc.name);
+  pick.type = 'button';
+  const sub = locationSubtitle(loc);
+  if (sub) pick.append(el('small', '', sub));
+  pick.addEventListener('click', () => { closeSheet(); loadLocation(loc); });
+  li.append(pick);
+  if (removable) {
+    const rm = el('button', 'remove', '✕');
+    rm.type = 'button';
+    rm.setAttribute('aria-label', `${loc.name} aus Favoriten entfernen`);
+    rm.addEventListener('click', () => { store.removeFavorite(loc); renderFavorites(); updateFavButton(); });
+    li.append(rm);
+  }
+  return li;
+}
+
+function renderFavorites() {
+  const favs = store.getFavorites();
+  const list = $('favorites');
+  list.replaceChildren(...(favs.length
+    ? favs.map((f) => locationItem(f, { removable: true }))
+    : [el('li', 'empty', 'Noch keine Favoriten – Ort wählen und oben ☆ antippen.')]));
+}
+
+async function runSearch(query) {
+  const list = $('search-results');
+  if (query.length < 2) { list.replaceChildren(); return; }
+  try {
+    const results = await searchLocations(query);
+    if ($('search-input').value.trim() !== query) return; // outdated response
+    list.replaceChildren(...(results.length
+      ? results.map((r) => locationItem(r))
+      : [el('li', 'empty', 'Kein Ort gefunden')]));
+  } catch (err) {
+    console.error('search failed', err);
+    list.replaceChildren(el('li', 'empty', 'Suche nicht möglich – Verbindung prüfen'));
+  }
+}
+
+function openSheet() {
+  $('sheet').hidden = false;
+  $('search-input').value = '';
+  $('search-results').replaceChildren();
+  renderFavorites();
+  setTimeout(() => $('search-input').focus(), 50);
+}
+
+function closeSheet() {
+  $('sheet').hidden = true;
+}
+
+// ---------- init ----------
+function bindEvents() {
+  $('btn-location').addEventListener('click', openSheet);
+  $('btn-refresh').addEventListener('click', () => currentLocation && loadLocation(currentLocation));
+  $('btn-gps').addEventListener('click', () => useGps(null));
+  $('btn-fav').addEventListener('click', () => {
+    if (!currentLocation || currentLocation.isGps) return;
+    store.toggleFavorite(currentLocation);
+    updateFavButton();
+  });
+  document.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', closeSheet));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+  $('search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    clearTimeout(searchTimer);
+    runSearch($('search-input').value.trim());
+  });
+  $('search-input').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    const q = e.target.value.trim();
+    searchTimer = setTimeout(() => runSearch(q), 350);
+  });
+
+  window.addEventListener('online', () => currentLocation && loadLocation(currentLocation));
+  window.addEventListener('offline', () => showStatus('Offline – gespeicherter Stand', 'warn'));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentLocation && Date.now() - lastFetchedAt > STALE_AFTER_MS) {
+      loadLocation(currentLocation);
+    }
+  });
+}
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('SW registration failed', err));
+  }
+}
+
+function init() {
+  bindEvents();
+  registerServiceWorker();
+  const last = store.getLastLocation();
+  if (!last) {
+    useGps(DEFAULT_LOCATION);
+  } else {
+    loadLocation(last); // show cached data immediately
+    if (last.isGps) useGps(null); // then refresh the GPS position
+  }
+}
+
+init();
