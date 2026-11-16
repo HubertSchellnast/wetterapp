@@ -3,6 +3,8 @@ import { fetchForecast, searchLocations } from './api.js';
 import * as store from './storage.js';
 import { describe, sceneFor } from './weathercodes.js';
 import { setScene } from './background.js';
+import { fetchWarnings, WARN_TYPES, WARN_LEVELS, bulletLines } from './warnings.js';
+import { openModal, setModalContent, closeModal, isModalOpen } from './modal.js';
 
 const DEFAULT_LOCATION = { name: 'Wien', lat: 48.21, lon: 16.37, admin1: 'Wien', country: 'Österreich' };
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -12,6 +14,9 @@ let currentLocation = null;
 let lastFetchedAt = 0;
 let requestSeq = 0;
 let searchTimer = null;
+let lastData = null;
+let lastWarnings = null;
+let warnSeq = 0;
 
 // ---------- helpers ----------
 function el(tag, className, text) {
@@ -134,6 +139,7 @@ function renderDetails(data) {
 }
 
 function render(data, fetchedAt, fromCache) {
+  lastData = data;
   renderHero(data);
   renderHourly(data);
   renderDaily(data);
@@ -160,6 +166,7 @@ async function loadLocation(loc) {
   store.setLastLocation(loc);
   $('location-name').textContent = loc.name;
   updateFavButton();
+  renderWarnings(null);
 
   const cached = store.getCachedForecast(loc);
   if (cached) render(cached.data, cached.fetchedAt, true);
@@ -178,6 +185,7 @@ async function loadLocation(loc) {
     store.setCachedForecast(loc, data, fetchedAt);
     render(data, fetchedAt, false);
     showStatus(null);
+    loadWarnings(loc);
   } catch (err) {
     if (seq !== requestSeq) return;
     console.error('forecast failed', err);
@@ -213,6 +221,114 @@ function useGps(fallback) {
     },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 10 * 60 * 1000 },
   );
+}
+
+// ---------- warnings (GeoSphere Austria) ----------
+async function loadWarnings(loc) {
+  const seq = ++warnSeq;
+  try {
+    const result = await fetchWarnings(loc.lat, loc.lon);
+    if (seq === warnSeq) renderWarnings(result);
+  } catch (err) {
+    console.warn('warnings failed', err);
+    if (seq === warnSeq) {
+      renderWarnings(null);
+      $('warn-info').textContent = 'Unwetterwarnungen derzeit nicht abrufbar';
+    }
+  }
+}
+
+function renderWarnings(result) {
+  lastWarnings = result;
+  const banner = $('warnings');
+  const info = $('warn-info');
+  banner.hidden = true;
+  info.textContent = '';
+  if (!result) return;
+  if (!result.covered) {
+    info.textContent = 'Unwetterwarnungen: nur für Orte in Österreich verfügbar';
+    return;
+  }
+  if (!result.warnings.length) {
+    info.textContent = `Unwetterwarnungen: keine aktiv${result.municipality ? ` (${result.municipality})` : ''}`;
+    return;
+  }
+  const top = result.warnings[0];
+  const [levelName, levelKey] = WARN_LEVELS[top.level] || ['', 'yellow'];
+  const [typeName, icon] = WARN_TYPES[top.type] || ['Warnung', '⚠️'];
+  const textBox = el('span', 'warn-text');
+  textBox.append(
+    el('strong', '', `Warnstufe ${levelName}: ${typeName}`),
+    el('span', '', top.text),
+  );
+  const more = result.warnings.length > 1 ? `+${result.warnings.length - 1} weitere · ` : '';
+  textBox.append(el('span', 'warn-more', `${more}Details ›`));
+  banner.className = `warn-banner warn-${levelKey}`;
+  banner.replaceChildren(el('span', 'warn-icon', icon), textBox);
+  banner.hidden = false;
+  info.textContent = 'Unwetterwarnungen: GeoSphere Austria';
+}
+
+function openWarningDetails() {
+  const result = lastWarnings;
+  if (!result || !result.warnings.length) return;
+  const box = el('div', 'warn-details');
+  if (result.municipality) box.append(el('p', 'muted', `Gemeinde: ${result.municipality}`));
+  for (const w of result.warnings) {
+    const [levelName, levelKey] = WARN_LEVELS[w.level] || ['', 'yellow'];
+    const [typeName, icon] = WARN_TYPES[w.type] || ['Warnung', '⚠️'];
+    const card = el('article', `warn-card warn-${levelKey}`);
+    card.append(
+      el('h3', '', `${icon} ${typeName} – Warnstufe ${levelName}`),
+      el('p', 'warn-time', `${w.begin} bis ${w.end}`),
+      el('p', '', w.text),
+    );
+    const section = (title, text) => {
+      const lines = bulletLines(text);
+      if (!lines.length) return;
+      card.append(el('h4', '', title));
+      const ul = el('ul');
+      lines.forEach((l) => ul.append(el('li', '', l)));
+      card.append(ul);
+    };
+    section('Mögliche Auswirkungen', w.impacts);
+    section('Empfehlungen', w.advice);
+    if (w.meteo) card.append(el('p', 'muted', w.meteo));
+    box.append(card);
+  }
+  const src = el('p', 'source');
+  const link = el('a', '', 'warnungen.zamg.at');
+  link.href = 'https://warnungen.zamg.at/';
+  link.target = '_blank';
+  link.rel = 'noopener';
+  src.append('Quelle: GeoSphere Austria (CC BY 4.0) · ', link);
+  box.append(src);
+  openModal('Unwetterwarnungen', box);
+}
+
+// ---------- radar & spread chart (loaded on demand) ----------
+async function openRadar() {
+  if (!currentLocation) return;
+  if (!navigator.onLine) { showStatus('Das Regenradar braucht eine Internetverbindung', 'warn'); return; }
+  const { createRadar } = await import('./radar.js');
+  const radar = createRadar(currentLocation);
+  openModal(`Regenradar · ${currentLocation.name}`, radar.node, { onClose: () => radar.destroy() });
+}
+
+async function openSpread() {
+  if (!currentLocation) return;
+  const loc = currentLocation;
+  openModal(`Schwankungsbreite · ${loc.name}`, el('p', 'muted', 'Ensemble-Prognose wird geladen …'));
+  try {
+    const [{ fetchSpread }, { renderSpreadChart }] = await Promise.all([import('./ensemble.js'), import('./chart.js')]);
+    const spread = await fetchSpread(loc.lat, loc.lon);
+    if (!isModalOpen() || loc !== currentLocation) return;
+    const nowHour = lastData ? `${lastData.current.time.slice(0, 13)}:00` : '';
+    setModalContent(renderSpreadChart(spread.rows, { nowHour, members: spread.members }));
+  } catch (err) {
+    console.error('spread failed', err);
+    if (isModalOpen()) setModalContent(el('p', 'status status-error', 'Die Ensemble-Daten konnten nicht geladen werden – Verbindung prüfen.'));
+  }
 }
 
 // ---------- search sheet ----------
@@ -284,7 +400,11 @@ function bindEvents() {
     updateFavButton();
   });
   document.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', closeSheet));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+  document.querySelectorAll('[data-close-modal]').forEach((n) => n.addEventListener('click', closeModal));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeSheet(); closeModal(); } });
+  $('warnings').addEventListener('click', openWarningDetails);
+  $('btn-radar').addEventListener('click', openRadar);
+  $('btn-spread').addEventListener('click', openSpread);
 
   $('search-form').addEventListener('submit', (e) => {
     e.preventDefault();
