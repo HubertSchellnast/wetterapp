@@ -237,6 +237,7 @@ main {
 .warn-yellow { background: rgba(245, 200, 75, .14); border-color: #f5c84b; }
 .warn-orange { background: rgba(255, 150, 60, .16); border-color: #ff963c; }
 .warn-red    { background: rgba(255, 85, 85, .18);  border-color: #ff5555; }
+.warn-purple { background: rgba(190, 110, 255, .2); border-color: #be6eff; }
 .warn-details { display: grid; gap: 12px; }
 .warn-card { padding: 12px 14px; border-radius: 14px; border: 1px solid; border-left-width: 6px; }
 .warn-card h3 { margin: 0 0 4px; font-size: 1rem; text-transform: none; letter-spacing: 0; color: var(--text); }
@@ -260,6 +261,7 @@ main {
   background: #0e1116; touch-action: none; cursor: grab; user-select: none;
 }
 .radar-pan, .radar-layer, .radar-frame { position: absolute; inset: 0; }
+.radar-pan { will-change: transform; }
 .radar-layer img, .radar-frame img { position: absolute; width: 256px; height: 256px; pointer-events: none; }
 /* OSM tiles are light - turn them into a dark map that matches the app */
 .radar-base img { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.45); }
