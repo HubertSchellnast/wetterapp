@@ -1,17 +1,16 @@
-// Rain radar: RainViewer (past 2 h, free for personal use, max zoom 7) on a
-// CARTO dark basemap (© OpenStreetMap contributors, © CARTO). Small custom tile
-// viewer - no map library needed. Drag to pan, buttons to zoom.
+// Rain radar: RainViewer (past 2 h, free for personal use, max zoom 7) on
+// OpenStreetMap tiles, darkened via CSS filter (© OpenStreetMap contributors, ODbL).
+// Small custom tile viewer - no map library needed. Drag to pan, buttons to zoom.
+// Note: CARTO basemaps were dropped in v1.3.0 - they now require an API key.
 const MAPS_URL = 'https://api.rainviewer.com/public/weather-maps.json';
 const TILE = 256;
 const MIN_Z = 4;
 const MAX_Z = 7; // RainViewer free tier limit
 const COLOR = 2; // "Universal Blue" - the only colour scheme on the free tier
-const SUBDOMAINS = ['a', 'b', 'c', 'd'];
 const FRAME_MS = 650;
 const LAST_FRAME_HOLD_MS = 1800;
 
-const baseUrl = (z, x, y) => `https://${SUBDOMAINS[(x + y) % 4]}.basemaps.cartocdn.com/dark_all/${z}/${x}/${y}.png`;
-const labelUrl = (z, x, y) => `https://${SUBDOMAINS[(x + y) % 4]}.basemaps.cartocdn.com/dark_only_labels/${z}/${x}/${y}.png`;
+const baseUrl = (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 
 function project(lat, lon, z) {
   const size = TILE * 2 ** z;
@@ -42,12 +41,11 @@ export function createRadar({ lat, lon, name }) {
   const node = el('div', 'radar');
   const map = el('div', 'radar-map');
   const pan = el('div', 'radar-pan');
-  const baseLayer = el('div', 'radar-layer');
+  const baseLayer = el('div', 'radar-layer radar-base');
   const frameLayer = el('div', 'radar-layer');
-  const labelLayer = el('div', 'radar-layer');
   const marker = el('div', 'radar-marker');
   marker.title = name || 'Ort';
-  pan.append(baseLayer, frameLayer, labelLayer, marker);
+  pan.append(baseLayer, frameLayer, marker);
   map.append(pan);
 
   const status = el('div', 'radar-status', 'Radar wird geladen …');
@@ -72,7 +70,11 @@ export function createRadar({ lat, lon, name }) {
   rvLink.href = 'https://www.rainviewer.com/';
   rvLink.target = '_blank';
   rvLink.rel = 'noopener';
-  source.append('Radar: ', rvLink, ' · Karte: © OpenStreetMap-Mitwirkende, © CARTO');
+  const osmLink = el('a', '', '© OpenStreetMap-Mitwirkende');
+  osmLink.href = 'https://www.openstreetmap.org/copyright';
+  osmLink.target = '_blank';
+  osmLink.rel = 'noopener';
+  source.append('Radar: ', rvLink, ' · Karte: ', osmLink);
   node.append(map, controls, note, source);
 
   let z = 6;
@@ -112,7 +114,6 @@ export function createRadar({ lat, lon, name }) {
 
   function render() {
     baseLayer.replaceChildren(tilesFor(baseUrl));
-    labelLayer.replaceChildren(tilesFor(labelUrl));
     frameDivs = frames.map((f, i) => {
       const d = el('div', i === current ? 'radar-frame active' : 'radar-frame');
       d.append(tilesFor((zz, x, y) => `${host}${f.path}/${TILE}/${zz}/${x}/${y}/${COLOR}/1_1.png`));
