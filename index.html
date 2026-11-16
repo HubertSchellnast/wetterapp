@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="WetterHubert – Regen? Sonne? Hubert weiß es.">
+  <title>WetterHubert</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="brand">
+    <img class="brand-logo" src="icons/logo.svg" alt="" width="46" height="46">
+    <div>
+      <h1 class="brand-title">Wetter<b>Hubert</b></h1>
+      <p class="brand-tagline">Regen? Sonne? Hubert weiß es.</p>
+    </div>
+  </header>
+
+  <nav class="topbar">
+    <button id="btn-location" class="location-btn" type="button" aria-label="Ort wählen">
+      <span id="location-name">Wird geladen …</span>
+      <span class="chevron" aria-hidden="true">▾</span>
+    </button>
+    <div class="topbar-actions">
+      <button id="btn-fav" class="icon-btn" type="button" aria-label="Als Favorit speichern">☆</button>
+      <button id="btn-gps" class="icon-btn" type="button" aria-label="Aktuellen Standort verwenden">⌖</button>
+      <button id="btn-refresh" class="icon-btn" type="button" aria-label="Aktualisieren">⟳</button>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div id="status" class="status" role="status" hidden></div>
+
+    <section class="hero" id="hero">
+      <div class="hero-icon" id="hero-icon" aria-hidden="true">·</div>
+      <div class="hero-temp" id="hero-temp">--°</div>
+      <div class="hero-desc" id="hero-desc"></div>
+      <div class="hero-sub" id="hero-sub"></div>
+    </section>
+
+    <section class="card">
+      <h2>Nächste 24 Stunden</h2>
+      <div class="hourly" id="hourly"></div>
+    </section>
+
+    <section class="card">
+      <h2>7 Tage</h2>
+      <ul class="daily" id="daily"></ul>
+    </section>
+
+    <section class="details" id="details"></section>
+
+    <footer class="footer">
+      <div id="updated"></div>
+      <div>Wetterdaten: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0)</div>
+    </footer>
+  </main>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <h2 id="sheet-title">Ort wählen</h2>
+      <form id="search-form" autocomplete="off">
+        <input id="search-input" type="search" placeholder="Stadt suchen, z. B. Graz" enterkeyhint="search" aria-label="Ort suchen">
+      </form>
+      <ul class="list" id="search-results"></ul>
+      <h3>Favoriten</h3>
+      <ul class="list" id="favorites"></ul>
+      <button class="sheet-close" type="button" data-close>Schließen</button>
+    </div>
+  </div>
+</body>
+</html>
