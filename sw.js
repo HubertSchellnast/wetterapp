@@ -1,7 +1,7 @@
 // Service worker: caches the app shell so the app starts offline.
 // Weather data is cached by the app itself (localStorage), not here.
 // IMPORTANT: bump VERSION on every deployment so phones pick up the update.
-const VERSION = 'v1.3.1';
+const VERSION = 'v1.4.0';
 const SHELL_CACHE = `wetter-shell-${VERSION}`;
 const SHELL_FILES = [
   './',
